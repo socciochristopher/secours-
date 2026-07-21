@@ -281,6 +281,11 @@
         <label class="f" for="callback">Votre numéro (retour de position)</label>
         <input type="tel" id="callback" inputmode="tel" placeholder="+33 6 00 00 00 00 — la victime renverra sa position ici" autocomplete="off">
 
+        <div id="pubUrlWrap" style="display:none">
+          <label class="f" for="pubUrl">Adresse publique de l'outil</label>
+          <input type="text" id="pubUrl" inputmode="url" placeholder="https://socciochristopher.github.io/secours-/" autocomplete="off">
+        </div>
+
         <label class="f" for="msg">Message du SMS</label>
         <textarea id="msg" rows="3"></textarea>
 
@@ -389,6 +394,7 @@
   var body = document.body;
   var $ = function(id){ return document.getElementById(id); };
   var params = {}; // paramètres après le hash (?to=…&op=…)
+  var forcedRoute = null; // bascule d'onglet forcée (aperçus / iframes sandbox)
 
   /* ---------- helpers coordonnées ---------- */
   function toDMS(deg, isLat){
@@ -446,8 +452,17 @@
   }
 
   function baseUrl(){
-    // URL du fichier sans hash — sert de base au lien envoyé
-    return location.origin.replace(/^null$/,'') + location.pathname;
+    // URL du fichier sans hash — sert de base au lien envoyé.
+    // Hors http(s) (aperçu, iframe sandbox, fichier local), on se
+    // rabat sur l'adresse publique saisie par l'utilisateur.
+    if(/^https?:$/.test(location.protocol)) return location.origin + location.pathname;
+    var el = $('pubUrl');
+    var v = el ? el.value.trim() : '';
+    if(v){
+      if(!/^https?:\/\//i.test(v)) v = 'https://' + v;
+      return v.split('#')[0];
+    }
+    return '';
   }
 
   /* ==================== ROUTAGE ==================== */
@@ -467,6 +482,7 @@
 
   function applyRoute(){
     var route = parseHash();
+    if(forcedRoute){ route = forcedRoute; forcedRoute = null; }
     var victim = route === 'localiser';
     body.classList.toggle('is-victim', victim);
     $('lnkConsole').classList.toggle('on', !victim);
@@ -480,11 +496,21 @@
   }
   window.addEventListener('hashchange', applyRoute);
 
+  /* bascule pilotée en JS : fonctionne même si la navigation par
+     ancre est bloquée (aperçus, iframes sandbox) */
+  function go(route){
+    forcedRoute = route;
+    try{ location.hash = (route === 'localiser') ? '#localiser' : '#console'; }catch(e){}
+    applyRoute();
+  }
+  $('lnkConsole').addEventListener('click', function(e){ e.preventDefault(); go('console'); });
+  $('lnkVictim').addEventListener('click', function(e){ e.preventDefault(); go('localiser'); });
+
   /* ==================== CONSOLE ==================== */
   function buildLink(){
     var to = ($('callback').value || '').replace(/\s/g,'');
     var op = $('op').value || '';
-    var u = baseUrl() + '#localiser';
+    var u = (baseUrl() || 'https://ADRESSE-DE-L-OUTIL') + '#localiser';
     var qs = [];
     if(to) qs.push('to=' + encodeURIComponent(to));
     if(op) qs.push('op=' + encodeURIComponent(op));
@@ -501,21 +527,23 @@
     // valeurs par défaut
     $('op').value = 'PGHM';
     composeMsg();
-    var b = baseUrl();
-    if(location.protocol === 'file:'){
-      $('baseHint').textContent = 'un fichier local';
-      $('baseHint2').textContent = ' — pour l\u2019envoi du lien, hébergez-le sur une URL publique (GitHub Pages, serveur du poste…).';
+    if(/^https?:$/.test(location.protocol)){
+      $('baseHint').textContent = baseUrl();
     } else {
-      $('baseHint').textContent = b;
+      $('pubUrlWrap').style.display = 'block';
+      $('baseHint').textContent = 'l\u2019adresse publique saisie ci-dessus';
+      $('baseHint2').textContent = ' — cet aperçu hors ligne ne peut pas la deviner seul.';
     }
 
-    ['op','callback'].forEach(function(id){ $(id).addEventListener('input', composeMsg); });
+    ['op','callback','pubUrl'].forEach(function(id){ $(id).addEventListener('input', composeMsg); });
 
     $('sendSms').addEventListener('click', function(){
       var tel = ($('tel').value || '').replace(/[^\d+]/g,'');
       composeMsg();
       var bodyTxt = encodeURIComponent($('msg').value);
-      var href = 'sms:' + tel + '?body=' + bodyTxt;
+      // iOS exige « & » comme séparateur dans sms: ; Android accepte « ? »
+      var sep = /iPhone|iPad|iPod/.test(navigator.userAgent) ? '&' : '?';
+      var href = 'sms:' + tel + sep + 'body=' + bodyTxt;
       window.location.href = href;
       showLink();
     });
@@ -735,9 +763,11 @@
     var to = (params.to || '').replace(/[^\d+]/g,'');
     var la=fmt(vBest.lat,6), lo=fmt(vBest.lon,6), acc=vBest.acc!=null?Math.round(vBest.acc):'';
     var osm = 'https://www.openstreetmap.org/?mlat='+la+'&mlon='+lo+'#map=16/'+la+'/'+lo;
-    var consoleLink = baseUrl()+'#console?pos='+la+','+lo+(acc!==''?','+acc:'');
-    var txt = 'POSITION VICTIME '+la+','+lo+(acc!==''?' (±'+acc+'m)':'')+' | Carte: '+osm+' | Secours: '+consoleLink;
-    var href = 'sms:'+to+'?body='+encodeURIComponent(txt);
+    var b = baseUrl();
+    var consoleLink = b ? ' | Secours: '+b+'#console?pos='+la+','+lo+(acc!==''?','+acc:'') : '';
+    var txt = 'POSITION VICTIME '+la+','+lo+(acc!==''?' (±'+acc+'m)':'')+' | Carte: '+osm+consoleLink;
+    var sep = /iPhone|iPad|iPod/.test(navigator.userAgent) ? '&' : '?';
+    var href = 'sms:'+to+sep+'body='+encodeURIComponent(txt);
     window.location.href = href;
   }
 

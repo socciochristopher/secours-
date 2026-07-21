@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Locator Secours — Localisation SMS/Web</title>
+<style>
+  /* ============================================================
+     LOCATOR SECOURS — instrument de localisation SAR (fichier unique)
+     Direction visuelle : signalétique alpine / balise avalanche.
+     Ardoise nuit + orange haute-visibilité + ambre signal.
+     Lectures de coordonnées en chasse fixe, comme un GPS de terrain.
+     ============================================================ */
+
+  :root{
+    --nuit:#0E1419;        /* fond ardoise nuit */
+    --nuit-2:#161F27;      /* panneaux */
+    --nuit-3:#1E2A34;      /* champs / bordures internes */
+    --givre:#E8F1F5;       /* texte principal, glace */
+    --acier:#8194A1;       /* texte secondaire */
+    --acier-fonce:#4A5A66; /* lignes, contours discrets */
+    --orange:#FF5A00;      /* action secours */
+    --orange-clair:#FF7A33;
+    --ambre:#FFC61E;       /* action victime, visibilité max */
+    --ambre-fonce:#B8890C;
+    --verrou:#33D17A;      /* fix acquis */
+    --alerte:#FF3B3B;      /* erreurs */
+    --ombre: 0 12px 40px rgba(0,0,0,.5);
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--sans);
+    background:var(--nuit);
+    color:var(--givre);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    min-height:100dvh;
+    /* motif topographique très discret en fond */
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, rgba(255,90,0,.06), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(255,198,30,.05), transparent 55%);
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .wrap{max-width:920px;margin:0 auto}
+
+  /* --- lignes de niveau en arrière-plan (signature discrète) --- */
+  .contours{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.35}
+  .contours svg{width:100%;height:100%}
+  .app{position:relative;z-index:1}
+
+  /* -------------------- en-tête -------------------- */
+  header.top{display:flex;align-items:center;gap:14px;padding:6px 2px 20px}
+  .beacon{
+    width:38px;height:38px;flex:0 0 auto;border-radius:50%;
+    background:radial-gradient(circle at 50% 50%, var(--orange) 0 30%, transparent 32%);
+    position:relative;
+  }
+  .beacon::before,.beacon::after{
+    content:"";position:absolute;inset:0;border-radius:50%;
+    border:2px solid var(--orange);opacity:.6;
+    animation:ping 2.6s ease-out infinite;
+  }
+  .beacon::after{animation-delay:1.3s}
+  @keyframes ping{0%{transform:scale(.35);opacity:.7}80%,100%{transform:scale(1);opacity:0}}
+  .brand{display:flex;flex-direction:column}
+  .brand b{font-size:15px;letter-spacing:.16em;text-transform:uppercase;font-weight:800}
+  .brand small{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--acier)}
+  .modeswitch{margin-left:auto;display:flex;background:var(--nuit-2);border:1px solid var(--nuit-3);border-radius:999px;padding:4px}
+  .modeswitch a{
+    font:600 12px/1 var(--sans);letter-spacing:.06em;text-decoration:none;color:var(--acier);
+    padding:9px 14px;border-radius:999px;text-transform:uppercase;
+  }
+  .modeswitch a.on{background:var(--nuit-3);color:var(--givre)}
+
+  /* -------------------- bandeau sécurité -------------------- */
+  .safety{
+    display:flex;gap:12px;align-items:flex-start;
+    background:linear-gradient(180deg, rgba(255,59,59,.10), rgba(255,59,59,.04));
+    border:1px solid rgba(255,59,59,.35);border-radius:14px;
+    padding:14px 16px;margin-bottom:22px;font-size:13.5px;color:#FFD9D9;
+  }
+  .safety svg{flex:0 0 auto;margin-top:1px}
+  .safety b{color:#fff}
+
+  /* -------------------- panneaux -------------------- */
+  .panel{background:var(--nuit-2);border:1px solid var(--nuit-3);border-radius:18px;box-shadow:var(--ombre)}
+  .panel + .panel{margin-top:18px}
+  .panel .head{display:flex;align-items:center;gap:12px;padding:18px 20px 4px}
+  .panel .head .n{
+    font:800 13px/1 var(--mono);color:var(--nuit);background:var(--orange);
+    width:26px;height:26px;display:grid;place-items:center;border-radius:8px;flex:0 0 auto;
+  }
+  .panel .head h2{margin:0;font-size:15px;letter-spacing:.12em;text-transform:uppercase;font-weight:800}
+  .panel .head p{margin:0;font-size:12.5px;color:var(--acier)}
+  .panel .body{padding:16px 20px 20px}
+
+  label.f{display:block;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--acier);margin:14px 0 7px;font-weight:700}
+  input[type=text],input[type=tel],textarea{
+    width:100%;background:var(--nuit);border:1px solid var(--acier-fonce);border-radius:12px;
+    color:var(--givre);font:500 16px/1.4 var(--sans);padding:13px 14px;transition:border-color .15s, box-shadow .15s;
+  }
+  textarea{font-family:var(--mono);font-size:13.5px;resize:vertical;min-height:74px}
+  input:focus,textarea:focus{outline:none;border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,90,0,.18)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row > div{flex:1 1 180px}
+
+  /* -------------------- boutons -------------------- */
+  .btn{
+    -webkit-appearance:none;appearance:none;border:none;cursor:pointer;
+    font:800 15px/1 var(--sans);letter-spacing:.04em;border-radius:13px;
+    padding:15px 18px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    transition:transform .06s ease, filter .15s ease, background .15s;text-decoration:none;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn.block{width:100%}
+  .btn.orange{background:var(--orange);color:#1a0d00}
+  .btn.orange:hover{filter:brightness(1.08)}
+  .btn.ghost{background:var(--nuit-3);color:var(--givre);border:1px solid var(--acier-fonce)}
+  .btn.ghost:hover{border-color:var(--acier)}
+  .btn.mini{padding:10px 12px;font-size:13px;border-radius:10px}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .btnrow .btn{flex:1 1 auto}
+
+  .hint{font-size:12.5px;color:var(--acier);margin-top:12px}
+  .hint code{font-family:var(--mono);color:var(--ambre);background:var(--nuit);padding:2px 6px;border-radius:6px;font-size:12px}
+
+  .out{
+    margin-top:16px;background:var(--nuit);border:1px dashed var(--acier-fonce);border-radius:12px;
+    padding:13px 14px;font-family:var(--mono);font-size:13px;color:var(--givre);
+    word-break:break-all;white-space:pre-wrap;display:none;
+  }
+  .out.show{display:block}
+
+  #qr{margin:16px auto 0;width:168px;height:168px;background:#fff;border-radius:12px;padding:9px;display:none}
+  #qr.show{display:block}
+  #qr img,#qr canvas{display:block;width:100%;height:100%}
+
+  /* -------------------- carte -------------------- */
+  #mapWrap{display:none;margin-top:16px}
+  #mapWrap.show{display:block}
+  #map{height:340px;border-radius:14px;border:1px solid var(--acier-fonce);background:var(--nuit-3)}
+  .metrics{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .metric{flex:1 1 120px;background:var(--nuit);border:1px solid var(--nuit-3);border-radius:12px;padding:11px 13px}
+  .metric small{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--acier);margin-bottom:4px}
+  .metric b{font-family:var(--mono);font-size:17px;color:var(--givre)}
+  .maplinks{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+  .maplinks a{font:700 12.5px/1 var(--sans);text-decoration:none;color:var(--givre);background:var(--nuit-3);border:1px solid var(--acier-fonce);border-radius:9px;padding:9px 12px}
+  .maplinks a:hover{border-color:var(--orange)}
+
+  /* ============================================================
+     VUE VICTIME — ambre dominant, tout surdimensionné
+     ============================================================ */
+  .victim{display:none}
+  body.is-victim .console{display:none}
+  body.is-victim .victim{display:block}
+  body.is-victim{background-image:
+    radial-gradient(1000px 600px at 50% -20%, rgba(255,198,30,.10), transparent 60%);}
+
+  .v-hero{text-align:center;padding:8px 0 4px}
+  .v-hero h1{font-size:clamp(22px,6vw,30px);letter-spacing:.02em;margin:0 0 6px;font-weight:800}
+  .v-hero p{color:var(--acier);margin:0 0 4px;font-size:14.5px}
+  .v-op{display:inline-block;margin-top:8px;font:700 12px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ambre);background:rgba(255,198,30,.10);border:1px solid rgba(255,198,30,.35);border-radius:999px;padding:8px 14px}
+
+  .v-cta{
+    width:100%;margin-top:22px;border:none;cursor:pointer;border-radius:20px;
+    background:linear-gradient(180deg,var(--ambre),#E7A800);color:#1a1200;
+    font:900 21px/1.1 var(--sans);letter-spacing:.02em;
+    padding:26px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;
+    box-shadow:0 14px 44px rgba(255,198,30,.28);transition:transform .06s, filter .15s;
+  }
+  .v-cta:active{transform:translateY(2px)}
+  .v-cta:hover{filter:brightness(1.05)}
+  .v-cta .sub{font:700 13px/1 var(--sans);letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+  .v-cta[disabled]{filter:grayscale(.4) brightness(.9);cursor:progress}
+
+  /* écran de lecture GPS — la signature */
+  .readout{
+    margin-top:22px;background:var(--nuit-2);border:1px solid var(--nuit-3);border-radius:20px;
+    padding:22px 20px;display:none;position:relative;overflow:hidden;
+  }
+  .readout.show{display:block}
+  .readout .status{display:flex;align-items:center;gap:10px;font:700 12px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--acier);margin-bottom:18px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--acier);flex:0 0 auto}
+  .readout.searching .dot{background:var(--ambre);animation:pulse 1s ease-in-out infinite}
+  .readout.locked .dot{background:var(--verrou)}
+  .readout.locked .status{color:var(--verrou)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+  .coordgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .coordgrid .c{background:var(--nuit);border:1px solid var(--nuit-3);border-radius:14px;padding:14px 15px}
+  .coordgrid .c.wide{grid-column:1 / -1}
+  .coordgrid small{display:block;font:700 10.5px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--acier);margin-bottom:8px}
+  .coordgrid b{font-family:var(--mono);font-size:clamp(20px,6vw,26px);color:var(--givre);letter-spacing:.01em;font-weight:600;display:block}
+  .coordgrid .dms{font-family:var(--mono);font-size:12.5px;color:var(--acier);margin-top:6px}
+
+  /* jauge de précision */
+  .acc{margin-top:16px}
+  .acc .lab{display:flex;justify-content:space-between;font:700 11px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--acier);margin-bottom:8px}
+  .acc .lab .v{color:var(--givre);font-family:var(--mono)}
+  .accbar{height:12px;border-radius:999px;background:var(--nuit-3);overflow:hidden;position:relative}
+  .accfill{height:100%;width:5%;border-radius:999px;background:linear-gradient(90deg,var(--alerte),var(--ambre) 55%,var(--verrou));transition:width .5s ease}
+
+  .v-send{display:none;margin-top:20px}
+  .v-send.show{display:block}
+  .v-send .btn{font-size:17px;padding:18px}
+  .v-note{font-size:12.5px;color:var(--acier);text-align:center;margin-top:16px;line-height:1.6}
+  .v-err{display:none;margin-top:16px;background:rgba(255,59,59,.10);border:1px solid rgba(255,59,59,.4);border-radius:12px;padding:14px;color:#FFD9D9;font-size:13.5px}
+  .v-err.show{display:block}
+
+  footer.foot{margin-top:26px;text-align:center;color:var(--acier-fonce);font-size:11.5px;letter-spacing:.04em}
+  footer.foot a{color:var(--acier)}
+
+  @media (max-width:520px){
+    .coordgrid{grid-template-columns:1fr}
+    .panel .body{padding:14px 15px 18px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .beacon::before,.beacon::after,.readout.searching .dot{animation:none}
+    *{transition:none !important}
+  }
+</style>
+</head>
+<body>
+
+<!-- Lignes de niveau — motif de fond -->
+<div class="contours" aria-hidden="true">
+<svg viewBox="0 0 900 600" preserveAspectRatio="xMidYMid slice" fill="none" stroke="#233240" stroke-width="1.2">
+  <path d="M-50 120 C 150 60, 320 180, 470 120 S 780 40, 980 130"/>
+  <path d="M-50 190 C 160 130, 330 250, 480 190 S 790 110, 980 200"/>
+  <path d="M-50 265 C 170 205, 340 320, 500 260 S 800 190, 980 275"/>
+  <path d="M-50 345 C 180 285, 360 400, 520 340 S 810 270, 980 355"/>
+  <path d="M-50 430 C 190 370, 370 485, 540 425 S 820 355, 980 440"/>
+  <path d="M-50 520 C 200 460, 380 570, 560 510 S 830 445, 980 525"/>
+</svg>
+</div>
+
+<div class="wrap app">
+
+  <header class="top">
+    <div class="beacon" aria-hidden="true"></div>
+    <div class="brand">
+      <b>Locator&nbsp;Secours</b>
+      <small>Localisation SMS · Web</small>
+    </div>
+    <nav class="modeswitch" aria-label="Rôle">
+      <a href="#console" id="lnkConsole">Console</a>
+      <a href="#localiser" id="lnkVictim">Victime</a>
+    </nav>
+  </header>
+
+  <!-- ===================== CONSOLE SECOURISTE ===================== -->
+  <section class="console">
+
+    <div class="safety">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF3B3B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      <div>Outil d'assistance à la localisation. <b>Ne remplace pas l'alerte des secours.</b> Contactez toujours le 112, le 15 ou le PGHM. Fonctionne si la victime est consciente, a de la batterie et au moins un minimum de réseau (SMS ou 2G).</div>
+    </div>
+
+    <div class="panel">
+      <div class="head">
+        <span class="n">1</span>
+        <div><h2>Envoyer la demande de position</h2><p>Un SMS avec un lien unique est préparé pour la victime.</p></div>
+      </div>
+      <div class="body">
+        <div class="row">
+          <div>
+            <label class="f" for="tel">Numéro de la victime</label>
+            <input type="tel" id="tel" inputmode="tel" placeholder="+33 6 12 34 56 78" autocomplete="off">
+          </div>
+          <div>
+            <label class="f" for="op">Indicatif / poste secours</label>
+            <input type="text" id="op" placeholder="PGHM 31" autocomplete="off" maxlength="24">
+          </div>
+        </div>
+
+        <label class="f" for="callback">Votre numéro (retour de position)</label>
+        <input type="tel" id="callback" inputmode="tel" placeholder="+33 6 00 00 00 00 — la victime renverra sa position ici" autocomplete="off">
+
+        <label class="f" for="msg">Message du SMS</label>
+        <textarea id="msg" rows="3"></textarea>
+
+        <div class="btnrow">
+          <button class="btn orange" id="sendSms">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a0d00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Ouvrir le SMS
+          </button>
+          <button class="btn ghost" id="copyLink">Copier le lien</button>
+          <button class="btn ghost" id="showQr">QR&nbsp;code</button>
+        </div>
+
+        <div class="out" id="linkOut"></div>
+        <div id="qr" aria-label="QR code du lien de localisation"></div>
+        <p class="hint">Le bouton « Ouvrir le SMS » lance l'app Messages avec le texte pré-rempli — vous validez l'envoi. Hébergez ce fichier à une URL publique (le lien pointe vers <code id="baseHint">cette page</code><span id="baseHint2"></span>).</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="head">
+        <span class="n">2</span>
+        <div><h2>Recevoir &amp; localiser</h2><p>Collez les coordonnées ou le lien reçus par SMS pour les afficher sur la carte.</p></div>
+      </div>
+      <div class="body">
+        <label class="f" for="posin">Coordonnées ou lien reçu</label>
+        <input type="text" id="posin" placeholder="43.5678, 1.1234   —   ou collez le lien reçu" autocomplete="off">
+        <div class="btnrow">
+          <button class="btn orange" id="plot">Afficher sur la carte</button>
+          <button class="btn ghost" id="myPos">Ma position (calcul distance)</button>
+        </div>
+
+        <div id="mapWrap">
+          <div id="map"></div>
+          <div class="metrics">
+            <div class="metric"><small>Latitude</small><b id="mLat">—</b></div>
+            <div class="metric"><small>Longitude</small><b id="mLon">—</b></div>
+            <div class="metric"><small>Précision</small><b id="mAcc">—</b></div>
+            <div class="metric"><small>Distance</small><b id="mDist">—</b></div>
+            <div class="metric"><small>Cap</small><b id="mBrg">—</b></div>
+          </div>
+          <div class="maplinks" id="mapLinks"></div>
+        </div>
+        <p class="hint" id="mapHint">La carte OpenStreetMap se charge à la première utilisation. Fond IGN disponible dans le sélecteur en haut à droite de la carte.</p>
+      </div>
+    </div>
+
+    <footer class="foot">
+      Locator Secours · fichier HTML autonome · fond de carte © OpenStreetMap · IGN Géoplateforme
+    </footer>
+  </section>
+
+  <!-- ===================== VUE VICTIME ===================== -->
+  <section class="victim">
+    <div class="v-hero">
+      <h1>Envoyez votre position</h1>
+      <p>Les secours ont besoin de votre localisation GPS.</p>
+      <span class="v-op" id="vOp" style="display:none"></span>
+    </div>
+
+    <button class="v-cta" id="vGet">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#1a1200" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4.5 8-11a8 8 0 1 0-16 0c0 6.5 8 11 8 11Z"/><circle cx="12" cy="11" r="3"/></svg>
+      Partager ma position
+      <span class="sub">Appuyez, puis autorisez l'accès</span>
+    </button>
+
+    <div class="readout" id="vRead">
+      <div class="status"><span class="dot"></span><span id="vStatus">Acquisition du signal GPS…</span></div>
+      <div class="coordgrid">
+        <div class="c"><small>Latitude</small><b id="vLat">—</b></div>
+        <div class="c"><small>Longitude</small><b id="vLon">—</b></div>
+        <div class="c wide"><small>Position (degrés, minutes, secondes)</small><b class="dms" id="vDms" style="font-size:14px">—</b></div>
+        <div class="c"><small>Altitude</small><b id="vAlt">—</b></div>
+        <div class="c"><small>Fixé à</small><b id="vTime">—</b></div>
+      </div>
+      <div class="acc">
+        <div class="lab"><span>Précision</span><span class="v" id="vAccTxt">—</span></div>
+        <div class="accbar"><div class="accfill" id="vAccFill"></div></div>
+      </div>
+    </div>
+
+    <div class="v-send" id="vSend">
+      <button class="btn orange block" id="vSendBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1a0d00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Renvoyer aux secours
+      </button>
+      <button class="btn ghost block" id="vCopy" style="margin-top:10px">Copier mes coordonnées</button>
+    </div>
+
+    <div class="v-err" id="vErr"></div>
+
+    <p class="v-note" id="vNote">Gardez cette page ouverte. Plus vous attendez, plus la position se précise. Restez à découvert si possible.</p>
+
+    <footer class="foot">Locator Secours · votre position n'est transmise qu'aux secours que vous contactez</footer>
+  </section>
+
+</div>
+
+<script>
+/* =====================================================================
+   LOCATOR SECOURS — logique. Aucun réseau requis pour la vue victime.
+   Routage par hash : #localiser => victime, sinon => console.
+   ===================================================================== */
+(function(){
+  "use strict";
+
+  var body = document.body;
+  var $ = function(id){ return document.getElementById(id); };
+  var params = {}; // paramètres après le hash (?to=…&op=…)
+
+  /* ---------- helpers coordonnées ---------- */
+  function toDMS(deg, isLat){
+    var hemi = deg < 0 ? (isLat ? "S" : "O") : (isLat ? "N" : "E");
+    var a = Math.abs(deg);
+    var d = Math.floor(a);
+    var mFloat = (a - d) * 60;
+    var m = Math.floor(mFloat);
+    var s = ((mFloat - m) * 60).toFixed(1);
+    return d + "° " + m + "' " + s + '" ' + hemi;
+  }
+  function fmt(n, p){ return Number(n).toFixed(p == null ? 6 : p); }
+
+  function haversine(a, b){ // {lat,lon} -> mètres
+    var R = 6371000, toR = Math.PI/180;
+    var dLat = (b.lat-a.lat)*toR, dLon = (b.lon-a.lon)*toR;
+    var la1 = a.lat*toR, la2 = b.lat*toR;
+    var h = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(la1)*Math.cos(la2)*Math.sin(dLon/2)*Math.sin(dLon/2);
+    return 2*R*Math.asin(Math.min(1, Math.sqrt(h)));
+  }
+  function bearing(a, b){
+    var toR=Math.PI/180, toD=180/Math.PI;
+    var y = Math.sin((b.lon-a.lon)*toR)*Math.cos(b.lat*toR);
+    var x = Math.cos(a.lat*toR)*Math.sin(b.lat*toR) - Math.sin(a.lat*toR)*Math.cos(b.lat*toR)*Math.cos((b.lon-a.lon)*toR);
+    return (Math.atan2(y,x)*toD + 360) % 360;
+  }
+  var CARD = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSO","SO","OSO","O","ONO","NO","NNO"];
+  function cardinal(b){ return CARD[Math.round(b/22.5) % 16]; }
+  function distTxt(m){ return m < 1000 ? Math.round(m) + " m" : (m/1000).toFixed(m<10000?2:1) + " km"; }
+
+  /* extrait lat/lon d'un texte libre : "43.5,1.2", un lien Google/OSM, ou notre #console?pos= */
+  function parsePos(str){
+    if(!str) return null;
+    str = str.trim();
+    // notre propre lien : pos=lat,lon(,acc)
+    var mp = str.match(/[?&#]pos=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?/i);
+    if(mp) return { lat:+mp[1], lon:+mp[2], acc: mp[3]?+mp[3]:null };
+    // google maps ?q= / @lat,lon / !3dlat!4dlon
+    var mg = str.match(/[@?](?:q=)?(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/);
+    if(mg) return { lat:+mg[1], lon:+mg[2], acc:null };
+    var m3 = str.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+    if(m3) return { lat:+m3[1], lon:+m3[2], acc:null };
+    // osm #map=z/lat/lon ou mlat=&mlon=
+    var mo = str.match(/mlat=(-?\d+\.\d+)&mlon=(-?\d+\.\d+)/);
+    if(mo) return { lat:+mo[1], lon:+mo[2], acc:null };
+    var moh = str.match(/#map=\d+\/(-?\d+\.\d+)\/(-?\d+\.\d+)/);
+    if(moh) return { lat:+moh[1], lon:+moh[2], acc:null };
+    // simple "lat, lon"
+    var ms = str.match(/^\s*(-?\d{1,3}(?:\.\d+)?)[,\s]+(-?\d{1,3}(?:\.\d+)?)\s*$/);
+    if(ms){
+      var la=+ms[1], lo=+ms[2];
+      if(Math.abs(la)<=90 && Math.abs(lo)<=180) return { lat:la, lon:lo, acc:null };
+    }
+    return null;
+  }
+
+  function baseUrl(){
+    // URL du fichier sans hash — sert de base au lien envoyé
+    return location.origin.replace(/^null$/,'') + location.pathname;
+  }
+
+  /* ==================== ROUTAGE ==================== */
+  function parseHash(){
+    var h = location.hash.slice(1);
+    var q = h.indexOf('?');
+    var route = q >= 0 ? h.slice(0,q) : h;
+    params = {};
+    if(q >= 0){
+      h.slice(q+1).split('&').forEach(function(kv){
+        var p = kv.split('=');
+        if(p[0]) params[decodeURIComponent(p[0])] = decodeURIComponent((p[1]||'').replace(/\+/g,' '));
+      });
+    }
+    return route;
+  }
+
+  function applyRoute(){
+    var route = parseHash();
+    var victim = route === 'localiser';
+    body.classList.toggle('is-victim', victim);
+    $('lnkConsole').classList.toggle('on', !victim);
+    $('lnkVictim').classList.toggle('on', victim);
+    if(victim){ setupVictim(); }
+    else {
+      // la console peut recevoir une position directement via #console?pos=
+      if(params.pos){ $('posin').value = params.pos; plot(); }
+    }
+    window.scrollTo(0,0);
+  }
+  window.addEventListener('hashchange', applyRoute);
+
+  /* ==================== CONSOLE ==================== */
+  function buildLink(){
+    var to = ($('callback').value || '').replace(/\s/g,'');
+    var op = $('op').value || '';
+    var u = baseUrl() + '#localiser';
+    var qs = [];
+    if(to) qs.push('to=' + encodeURIComponent(to));
+    if(op) qs.push('op=' + encodeURIComponent(op));
+    if(qs.length) u += '?' + qs.join('&');
+    return u;
+  }
+  function composeMsg(){
+    var op = $('op').value.trim();
+    var who = op ? op : 'Les secours';
+    $('msg').value = who + " : appuyez sur ce lien puis autorisez la localisation pour envoyer votre position GPS -> " + buildLink();
+  }
+
+  function initConsole(){
+    // valeurs par défaut
+    $('op').value = 'PGHM';
+    composeMsg();
+    var b = baseUrl();
+    if(location.protocol === 'file:'){
+      $('baseHint').textContent = 'un fichier local';
+      $('baseHint2').textContent = ' — pour l\u2019envoi du lien, hébergez-le sur une URL publique (GitHub Pages, serveur du poste…).';
+    } else {
+      $('baseHint').textContent = b;
+    }
+
+    ['op','callback'].forEach(function(id){ $(id).addEventListener('input', composeMsg); });
+
+    $('sendSms').addEventListener('click', function(){
+      var tel = ($('tel').value || '').replace(/[^\d+]/g,'');
+      composeMsg();
+      var bodyTxt = encodeURIComponent($('msg').value);
+      var href = 'sms:' + tel + '?body=' + bodyTxt;
+      window.location.href = href;
+      showLink();
+    });
+
+    $('copyLink').addEventListener('click', function(){ copyText(buildLink(), this, 'Copier le lien'); showLink(); });
+
+    $('showQr').addEventListener('click', function(){
+      var el = $('qr');
+      if(el.classList.contains('show')){ el.classList.remove('show'); el.innerHTML=''; return; }
+      loadQR(function(ok){
+        el.innerHTML='';
+        if(ok && window.QRCode){
+          new QRCode(el, { text: buildLink(), width:150, height:150, correctLevel: QRCode.CorrectLevel.M });
+          el.classList.add('show');
+        } else {
+          el.textContent = 'QR indisponible hors ligne'; el.classList.add('show');
+        }
+      });
+    });
+
+    $('plot').addEventListener('click', plot);
+    $('myPos').addEventListener('click', locateRescuer);
+    $('posin').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); plot(); }});
+  }
+
+  function showLink(){ var o=$('linkOut'); o.textContent = buildLink(); o.classList.add('show'); }
+
+  /* ---------- carte (Leaflet chargé à la demande) ---------- */
+  var map, marker, accCircle, rescuerMarker, rescuer=null, target=null;
+
+  function loadLeaflet(cb){
+    if(window.L){ cb(true); return; }
+    var css = document.createElement('link');
+    css.rel='stylesheet'; css.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    var s = document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    s.onload=function(){ cb(true); }; s.onerror=function(){ cb(false); };
+    document.head.appendChild(s);
+  }
+  function loadQR(cb){
+    if(window.QRCode){ cb(true); return; }
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload=function(){ cb(true); }; s.onerror=function(){ cb(false); };
+    document.head.appendChild(s);
+  }
+
+  function ensureMap(cb){
+    $('mapWrap').classList.add('show');
+    loadLeaflet(function(ok){
+      if(!ok){ $('mapHint').textContent = 'Carte indisponible (pas de réseau). Les liens ci-dessous restent utilisables.'; cb(false); return; }
+      if(!map){
+        map = L.map('map', { zoomControl:true });
+        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom:19, attribution:'© OpenStreetMap'
+        });
+        var ign = L.tileLayer('https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}', {
+          maxZoom:19, attribution:'© IGN Géoplateforme'
+        });
+        var ignScan = L.tileLayer('https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN25TOUR&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}', {
+          maxZoom:16, attribution:'© IGN Géoplateforme'
+        });
+        osm.addTo(map);
+        L.control.layers({ 'OpenStreetMap':osm, 'IGN Plan':ign, 'IGN Topo (SCAN25)':ignScan }, null, {position:'topright'}).addTo(map);
+        map.setView([46.6,2.4], 5);
+      }
+      cb(true);
+    });
+  }
+
+  function renderTarget(){
+    if(!target) return;
+    ensureMap(function(ok){
+      $('mLat').textContent = fmt(target.lat);
+      $('mLon').textContent = fmt(target.lon);
+      $('mAcc').textContent = target.acc!=null ? '± '+Math.round(target.acc)+' m' : 'n/c';
+      updateDistance();
+      buildMapLinks();
+      if(!ok) return;
+      var ll=[target.lat, target.lon];
+      if(marker) marker.setLatLng(ll); else marker = L.marker(ll).addTo(map);
+      marker.bindPopup('Victime<br>'+fmt(target.lat,5)+', '+fmt(target.lon,5)).openPopup();
+      if(accCircle) map.removeLayer(accCircle);
+      if(target.acc!=null){ accCircle = L.circle(ll, { radius:target.acc, color:'#FF5A00', weight:1, fillColor:'#FF5A00', fillOpacity:.12 }).addTo(map); }
+      map.setView(ll, target.acc!=null && target.acc>500 ? 13 : 16);
+    });
+  }
+
+  function plot(){
+    var p = parsePos($('posin').value);
+    if(!p){ $('mapHint').textContent = 'Format non reconnu. Attendu : « 43.5678, 1.2345 » ou un lien de carte.'; return; }
+    $('mapHint').textContent = 'La carte OpenStreetMap se charge à la première utilisation. Fond IGN via le sélecteur en haut à droite.';
+    target = p; renderTarget();
+  }
+
+  function locateRescuer(){
+    if(!navigator.geolocation){ alert('Géolocalisation non disponible sur cet appareil.'); return; }
+    var btn=$('myPos'); var old=btn.textContent; btn.textContent='Localisation…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      rescuer = { lat:pos.coords.latitude, lon:pos.coords.longitude };
+      btn.textContent = old;
+      ensureMap(function(ok){
+        if(ok){
+          var ll=[rescuer.lat, rescuer.lon];
+          if(rescuerMarker) rescuerMarker.setLatLng(ll);
+          else rescuerMarker = L.circleMarker(ll, { radius:8, color:'#33D17A', fillColor:'#33D17A', fillOpacity:.9 }).addTo(map).bindPopup('Vous (secours)');
+        }
+        updateDistance();
+        if(map && target && rescuer){ map.fitBounds([[target.lat,target.lon],[rescuer.lat,rescuer.lon]], {padding:[40,40]}); }
+      });
+    }, function(){ btn.textContent=old; alert('Impossible d\u2019obtenir votre position.'); }, { enableHighAccuracy:true, timeout:10000 });
+  }
+
+  function updateDistance(){
+    if(target && rescuer){
+      var d = haversine(rescuer, target), b = bearing(rescuer, target);
+      $('mDist').textContent = distTxt(d);
+      $('mBrg').textContent = Math.round(b)+'° '+cardinal(b);
+    } else {
+      $('mDist').textContent = '—'; $('mBrg').textContent = '—';
+    }
+  }
+
+  function buildMapLinks(){
+    if(!target) return;
+    var la=fmt(target.lat), lo=fmt(target.lon);
+    var links = [
+      ['Google Maps', 'https://www.google.com/maps/search/?api=1&query='+la+','+lo],
+      ['OpenStreetMap', 'https://www.openstreetmap.org/?mlat='+la+'&mlon='+lo+'#map=16/'+la+'/'+lo],
+      ['Géoportail IGN', 'https://www.geoportail.gouv.fr/carte?c='+lo+','+la+'&z=16&l0=GEOGRAPHICALGRIDSYSTEMS.MAPS.SCAN25TOUR::GEOPORTAIL:OGC:WMTS(1)'],
+      ['Plan Apple', 'https://maps.apple.com/?ll='+la+','+lo+'&q=Position'],
+      ['Itinéraire', 'https://www.google.com/maps/dir/?api=1&destination='+la+','+lo]
+    ];
+    var html = links.map(function(l){ return '<a href="'+l[1]+'" target="_blank" rel="noopener">'+l[0]+'</a>'; }).join('');
+    $('mapLinks').innerHTML = html;
+  }
+
+  /* ==================== VICTIME ==================== */
+  var vWatch=null, vBest=null;
+
+  function setupVictim(){
+    if($('vGet')._wired) return; $('vGet')._wired = true;
+    if(params.op){ $('vOp').textContent = params.op; $('vOp').style.display='inline-block'; }
+    $('vGet').addEventListener('click', startVictim);
+    $('vCopy').addEventListener('click', function(){ if(vBest) copyText(coordsText(vBest), this, 'Copier mes coordonnées'); });
+    $('vSendBtn').addEventListener('click', sendBack);
+  }
+
+  function coordsText(p){
+    var s = fmt(p.lat,6)+', '+fmt(p.lon,6);
+    if(p.acc!=null) s += ' (±'+Math.round(p.acc)+'m)';
+    return s;
+  }
+
+  function startVictim(){
+    var err=$('vErr'); err.classList.remove('show');
+    if(!navigator.geolocation){ showVErr("Ce téléphone ne permet pas la géolocalisation par le navigateur."); return; }
+    $('vRead').classList.add('show','searching'); $('vRead').classList.remove('locked');
+    $('vGet').setAttribute('disabled','');
+    $('vStatus').textContent = 'Acquisition du signal GPS…';
+
+    var opts = { enableHighAccuracy:true, maximumAge:0, timeout:27000 };
+    // 1 lecture immédiate + suivi continu (la précision s'améliore avec le temps)
+    navigator.geolocation.getCurrentPosition(onFix, onErr, opts);
+    if(vWatch!==null) navigator.geolocation.clearWatch(vWatch);
+    vWatch = navigator.geolocation.watchPosition(onFix, function(){}, opts);
+  }
+
+  function onFix(pos){
+    var c = pos.coords;
+    var p = { lat:c.latitude, lon:c.longitude, acc:c.accuracy, alt:c.altitude, t:pos.timestamp };
+    // ne garde que si meilleure précision (ou première)
+    if(!vBest || (p.acc!=null && p.acc <= vBest.acc)) vBest = p;
+    paintVictim(vBest);
+    $('vGet').removeAttribute('disabled');
+    $('vSend').classList.add('show');
+    if(vBest.acc!=null && vBest.acc <= 20){
+      $('vRead').classList.remove('searching'); $('vRead').classList.add('locked');
+      $('vStatus').textContent = 'Position précise obtenue';
+    } else {
+      $('vStatus').textContent = 'Position obtenue — affinage en cours…';
+    }
+  }
+  function onErr(e){
+    $('vGet').removeAttribute('disabled');
+    $('vRead').classList.remove('searching');
+    var msg;
+    if(e && e.code===1) msg = "Autorisation refusée. Ouvrez les réglages du navigateur et autorisez la localisation, puis réessayez.";
+    else if(e && e.code===2) msg = "Signal GPS indisponible pour l'instant. Placez-vous à découvert, ciel dégagé, et réessayez.";
+    else if(e && e.code===3) msg = "Le GPS met trop de temps à répondre. Réessayez sans bouger, à découvert.";
+    else msg = "Localisation impossible. Réessayez à découvert.";
+    showVErr(msg);
+    if(!vBest) $('vRead').classList.remove('show');
+  }
+  function showVErr(m){ var e=$('vErr'); e.textContent=m; e.classList.add('show'); }
+
+  function paintVictim(p){
+    $('vLat').textContent = fmt(p.lat,6);
+    $('vLon').textContent = fmt(p.lon,6);
+    $('vDms').textContent = toDMS(p.lat,true) + '   ·   ' + toDMS(p.lon,false);
+    $('vAlt').textContent = p.alt!=null && !isNaN(p.alt) ? Math.round(p.alt)+' m' : 'n/c';
+    var d=new Date(p.t); $('vTime').textContent = ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2);
+    if(p.acc!=null){
+      $('vAccTxt').textContent = '± '+Math.round(p.acc)+' m';
+      // barre : 100% quand <=5m, ~5% quand >=200m (échelle log inversée)
+      var a=Math.max(5, Math.min(200, p.acc));
+      var pct = 100 - ((Math.log(a)-Math.log(5)) / (Math.log(200)-Math.log(5)))*95;
+      $('vAccFill').style.width = Math.round(pct)+'%';
+    } else {
+      $('vAccTxt').textContent = 'n/c'; $('vAccFill').style.width='40%';
+    }
+  }
+
+  function sendBack(){
+    if(!vBest){ return; }
+    var to = (params.to || '').replace(/[^\d+]/g,'');
+    var la=fmt(vBest.lat,6), lo=fmt(vBest.lon,6), acc=vBest.acc!=null?Math.round(vBest.acc):'';
+    var osm = 'https://www.openstreetmap.org/?mlat='+la+'&mlon='+lo+'#map=16/'+la+'/'+lo;
+    var consoleLink = baseUrl()+'#console?pos='+la+','+lo+(acc!==''?','+acc:'');
+    var txt = 'POSITION VICTIME '+la+','+lo+(acc!==''?' (±'+acc+'m)':'')+' | Carte: '+osm+' | Secours: '+consoleLink;
+    var href = 'sms:'+to+'?body='+encodeURIComponent(txt);
+    window.location.href = href;
+  }
+
+  /* ==================== util copier ==================== */
+  function copyText(txt, btn, restore){
+    var done=function(){ if(btn){ var o=btn.textContent; btn.textContent='Copié ✓'; setTimeout(function(){ btn.textContent = restore||o; },1400); } };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(done, function(){ fallbackCopy(txt); done(); });
+    } else { fallbackCopy(txt); done(); }
+  }
+  function fallbackCopy(txt){
+    var ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); }catch(e){} document.body.removeChild(ta);
+  }
+
+  /* ==================== init ==================== */
+  initConsole();
+  applyRoute();
+})();
+</script>
+</body>
+</html>
